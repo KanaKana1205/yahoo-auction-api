@@ -1,15 +1,15 @@
 "use server"
 
 import { parseExcelFile } from "@/lib/excel-parser"
-import { fetchAuctionData } from "@/lib/auction-fetcher"
+import { fetchAuctionData, fetchMultiPageAuctionData } from "@/lib/auction-fetcher"
 import { calculateStats } from "@/lib/utils"
 
 export async function searchAuctions(query: string) {
   try {
-    // Fetch auction data from Yahoo Auctions
-    const items = await fetchAuctionData(query)
+    // 複数ページから落札データを取得（最大3ページ）
+    const items = await fetchMultiPageAuctionData(query, 3)
 
-    // Calculate statistics
+    // 統計情報を計算
     const stats = calculateStats(items.map((item) => item.price))
 
     return {
@@ -31,13 +31,14 @@ export async function processExcelFile(formData: FormData) {
       throw new Error("ファイルが見つかりません")
     }
 
-    // Parse Excel file to get queries
+    // Excelファイルを解析して検索クエリを取得
     const queries = await parseExcelFile(file)
 
-    // Process each query
+    // 各クエリを処理
     const results = await Promise.all(
       queries.map(async (query) => {
         try {
+          // 各クエリに対して1ページ分のデータを取得（処理時間短縮のため）
           const items = await fetchAuctionData(query)
           const stats = calculateStats(items.map((item) => item.price))
 

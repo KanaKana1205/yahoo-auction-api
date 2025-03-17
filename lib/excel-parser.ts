@@ -22,8 +22,9 @@ export async function parseExcelFile(file: File): Promise<string[]> {
           .filter((query) => query && typeof query === "string" && query.trim() !== "")
 
         resolve(queries)
-      } catch (error) {
-        reject(new Error("Excelファイルの解析に失敗しました"))
+      } catch (err) {
+        // 未使用の変数を修正
+        reject(new Error("Excelファイルの解析に失敗しました: " + String(err)))
       }
     }
 

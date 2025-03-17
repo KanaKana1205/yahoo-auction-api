@@ -4,15 +4,19 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { searchAuctions } from "@/lib/actions"
 import { SearchResults } from "@/components/search-results"
 import { Loader2 } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
+
+// APIのベースURL（Vercel FunctionsのURL）
+const API_BASE_URL = "https://yahoo-auction-api.vercel.app/api"
 
 export function SearchForm() {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [maxPages, setMaxPages] = useState(3)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -22,7 +26,15 @@ export function SearchForm() {
     setError("")
 
     try {
-      const data = await searchAuctions(query)
+      // APIを呼び出して検索を実行
+      const url = `${API_BASE_URL}/search?query=${encodeURIComponent(query)}&maxPages=${maxPages}`
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        throw new Error(`検索に失敗しました: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
       setResults(data)
     } catch (err) {
       setError("検索中にエラーが発生しました。もう一度お試しください。")
@@ -48,6 +60,22 @@ export function SearchForm() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label htmlFor="max-pages">検索ページ数: {maxPages}</Label>
+              <span className="text-sm text-muted-foreground">多いほど結果が増えますが時間がかかります</span>
+            </div>
+            <Slider
+              id="max-pages"
+              min={1}
+              max={5}
+              step={1}
+              value={[maxPages]}
+              onValueChange={(value) => setMaxPages(value[0])}
+              className="py-4"
             />
           </div>
 

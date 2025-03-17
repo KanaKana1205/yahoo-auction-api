@@ -1,5 +1,4 @@
-// This is a mock implementation for demonstration purposes
-// In a real application, you would implement web scraping or use an API
+import * as cheerio from "cheerio"
 
 interface AuctionItem {
   title: string
@@ -9,43 +8,171 @@ interface AuctionItem {
 }
 
 export async function fetchAuctionData(query: string): Promise<AuctionItem[]> {
-  // In a real implementation, you would:
-  // 1. Make HTTP requests to Yahoo Auctions
-  // 2. Parse the HTML response
-  // 3. Extract the auction data
+  try {
+    // URLエンコードしてクエリを準備
+    const encodedQuery = encodeURIComponent(query)
 
-  // For demonstration, we'll return mock data
-  console.log(`Fetching auction data for query: ${query}`)
+    // 終了したオークションを検索するURL
+    const searchUrl = `https://auctions.yahoo.co.jp/search/closed?p=${encodedQuery}&va=${encodedQuery}&exflg=1&b=1&n=100&s1=end&o1=d`
 
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+    console.log(`Fetching auction data from: ${searchUrl}`)
 
-  // Generate some random auction items based on the query
-  const count = Math.floor(Math.random() * 10) + 5 // 5-15 items
-  const items: AuctionItem[] = []
-
-  const basePrice = query.includes("CF-LV9RDAVS") ? 80000 : 50000
-
-  for (let i = 0; i < count; i++) {
-    // Generate a random price around the base price
-    const priceVariation = Math.random() * 0.4 - 0.2 // -20% to +20%
-    const price = Math.round(basePrice * (1 + priceVariation))
-
-    // Generate a random date within the last 30 days
-    const daysAgo = Math.floor(Math.random() * 30)
-    const date = new Date()
-    date.setDate(date.getDate() - daysAgo)
-    const dateStr = date.toISOString().split("T")[0]
-
-    items.push({
-      title: `${query} ${i % 2 === 0 ? "美品" : "中古"} ${i % 3 === 0 ? "ジャンク" : ""}`,
-      price,
-      date: dateStr,
-      url: `https://auctions.yahoo.co.jp/search/auction_${i}`,
+    // ページを取得
+    const response = await fetch(searchUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+      },
     })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch auction data: ${response.status} ${response.statusText}`)
+    }
+
+    const html = await response.text()
+
+    // HTMLをパース
+    const $ = cheerio.load(html)
+    const items: AuctionItem[] = []
+
+    // 各オークションアイテムを処理
+    $(".Result__item").each((_, element) => {
+      try {
+        // タイトルと商品URL
+        const titleElement = $(element).find(".Product__title a")
+        const title = titleElement.text().trim()
+        const url = titleElement.attr("href") || ""
+
+        // 価格（テキストから数値に変換）
+        const priceText = $(element).find(".Product__priceValue").text().trim()
+        const price = Number.parseInt(priceText.replace(/[^\d]/g, ""), 10)
+
+        // 終了日時
+        const dateText = $(element).find(".Product__time").text().trim()
+        const date = formatYahooAuctionDate(dateText)
+
+        // 有効なデータのみ追加
+        if (title && !isNaN(price) && date) {
+          items.push({ title, price, date, url })
+        }
+      } catch (err) {
+        console.error("Error parsing auction item:", err)
+      }
+    })
+
+    console.log(`Found ${items.length} auction items for query: ${query}`)
+    return items
+  } catch (error) {
+    console.error("Error fetching auction data:", error)
+    throw new Error("オークションデータの取得中にエラーが発生しました")
+  }
+}
+
+// Yahoo Auctionの日付形式を標準形式に変換
+function formatYahooAuctionDate(dateText: string): string {
+  try {
+    // 「MM月DD日」または「YYYY年MM月DD日」形式を処理
+    const now = new Date()
+    const currentYear = now.getFullYear()
+
+    // 年が含まれているかチェック
+    let year = currentYear
+    let monthDayText = dateText
+
+    if (dateText.includes("年")) {
+      const yearMatch = dateText.match(/(\d+)年/)
+      if (yearMatch && yearMatch[1]) {
+        year = Number.parseInt(yearMatch[1], 10)
+        monthDayText = dateText.split("年")[1]
+      }
+    }
+
+    // 月と日を抽出
+    const monthMatch = monthDayText.match(/(\d+)月/)
+    const dayMatch = monthDayText.match(/(\d+)日/)
+
+    if (monthMatch && monthMatch[1] && dayMatch && dayMatch[1]) {
+      const month = Number.parseInt(monthMatch[1], 10)
+      const day = Number.parseInt(dayMatch[1], 10)
+
+      // ISO形式の日付文字列を作成 (YYYY-MM-DD)
+      return `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`
+    }
+
+    // パースできない場合は現在の日付を返す
+    return now.toISOString().split("T")[0]
+  } catch (error) {
+    console.error("Error parsing date:", error, dateText)
+    return new Date().toISOString().split("T")[0]
+  }
+}
+
+// 複数ページのデータを取得する拡張機能（必要に応じて実装）
+export async function fetchMultiPageAuctionData(query: string, maxPages = 3): Promise<AuctionItem[]> {
+  let allItems: AuctionItem[] = []
+
+  for (let page = 1; page <= maxPages; page++) {
+    try {
+      const encodedQuery = encodeURIComponent(query)
+      const offset = (page - 1) * 100
+      const searchUrl = `https://auctions.yahoo.co.jp/search/closed?p=${encodedQuery}&va=${encodedQuery}&exflg=1&b=${offset + 1}&n=100&s1=end&o1=d`
+
+      // ページを取得
+      const response = await fetch(searchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch auction data: ${response.status} ${response.statusText}`)
+      }
+
+      const html = await response.text()
+      const $ = cheerio.load(html)
+      const pageItems: AuctionItem[] = []
+
+      // 各オークションアイテムを処理
+      $(".Result__item").each((_, element) => {
+        try {
+          const titleElement = $(element).find(".Product__title a")
+          const title = titleElement.text().trim()
+          const url = titleElement.attr("href") || ""
+
+          const priceText = $(element).find(".Product__priceValue").text().trim()
+          const price = Number.parseInt(priceText.replace(/[^\d]/g, ""), 10)
+
+          const dateText = $(element).find(".Product__time").text().trim()
+          const date = formatYahooAuctionDate(dateText)
+
+          if (title && !isNaN(price) && date) {
+            pageItems.push({ title, price, date, url })
+          }
+        } catch (err) {
+          console.error("Error parsing auction item:", err)
+        }
+      })
+
+      // 結果がない場合は終了
+      if (pageItems.length === 0) {
+        break
+      }
+
+      allItems = [...allItems, ...pageItems]
+
+      // 連続リクエストを避けるための遅延
+      if (page < maxPages) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    } catch (error) {
+      console.error(`Error fetching page ${page}:`, error)
+      break
+    }
   }
 
-  // Sort by date (newest first)
-  return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  return allItems
 }
 

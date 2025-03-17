@@ -4,9 +4,11 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { processExcelFile } from "@/lib/actions"
 import { BatchResults } from "@/components/batch-results"
 import { Loader2, FileSpreadsheet } from "lucide-react"
+
+// APIのベースURL（Vercel FunctionsのURL）
+const API_BASE_URL = "https://yahoo-auction-api.vercel.app/api"
 
 export function UploadForm() {
   const [file, setFile] = useState(null)
@@ -39,10 +41,22 @@ export function UploadForm() {
     setError("")
 
     try {
+      // FormDataを作成
       const formData = new FormData()
       formData.append("file", file)
 
-      const data = await processExcelFile(formData)
+      // APIを呼び出して一括検索を実行
+      const url = `${API_BASE_URL}/batch`
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error(`処理に失敗しました: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
       setResults(data)
     } catch (err) {
       setError("ファイル処理中にエラーが発生しました。もう一度お試しください。")
